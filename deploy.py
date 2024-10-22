@@ -39,6 +39,7 @@ import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
+import cv2
 
 import draccus
 import torch
@@ -55,6 +56,7 @@ import argparse
 import numpy as np
 import robomimic.utils.torch_utils as TorchUtils
 import robomimic.utils.file_utils as FileUtils
+import time
 
 # === Utilities ===
 SYSTEM_PROMPT = (
@@ -77,7 +79,14 @@ class DroidServer:
             => Takes in {"image": np.ndarray, "instruction": str, "unnorm_key": Optional[str]}
             => Returns  {"action": np.ndarray}
         """
-        
+        ##################################
+        self.times = 0#debug
+        #HACK debug
+        file_path = f"7/robot_data.json"
+        with open(file_path, 'r') as file:
+            self.read_data = json.load(file)
+        self.close_gripper = False
+        ################################
         self.droid_path, self.attn_implementation = droid_path, attn_implementation
         variant = dict(
             exp_name="policy_test",
@@ -172,7 +181,7 @@ class DroidServer:
 
         self.fs = self.config.get("train", {}).get("frame_stack", 1)  # Default to 1 if not present
 
-        print("droid_path: ", self.droid_path)
+        # print("droid_path: ", self.droid_path)
         # Load VLA Model using HF AutoClasses
         # self.processor = AutoProcessor.from_pretrained(self.droid_path, trust_remote_code=True)
         self.wrapped_policy = PolicyWrapperRobomimic(
@@ -182,10 +191,29 @@ class DroidServer:
             frame_stack=self.fs,
             eval_mode=True,
         )
-            
+        
+        # nets = self.policy.policy.nets
 
+        # Load the state dictionary
+        # state_dict = torch.load('model_epoch_40.pth', weights_only=True)
+
+        # # Access the model weights inside the state_dict
+        # model_state_dict = state_dict['model']
+
+        # for name, submodule in nets['policy'].named_modules():
+        #     # Construct the corresponding key in the state_dict
+        #     key_in_state_dict = f"policy.{name}"
+            
+        #     # Check if the key exists in model_state_dict['nets']
+        #     if key_in_state_dict in model_state_dict['nets']:
+        #         submodule.load_state_dict(model_state_dict['nets'][key_in_state_dict])
+        #         print(f"Weights loaded for submodule: {name}")
+        #     else:
+        #         print(f"No matching weights found for submodule: {name}")
+        
     def predict_action(self, payload: Dict[str, Any]) -> str:
         try:
+            start_time = time.time()
             if double_encode := "encoded" in payload:
                 # Support cases where `json_numpy` is hard to install, and numpy arrays are "double-encoded" as strings
                 assert len(payload.keys() == 1), "Only uses encoded payload!"
@@ -199,6 +227,7 @@ class DroidServer:
             # prompt = get_openvla_prompt(instruction, self.droid_path)
             # inputs = self.processor(prompt, Image.fromarray(image).convert("RGB")).to(self.device, dtype=torch.bfloat16)
             
+            print("[*]", cartesian_position)
             observation = {
                 "image": {
                     0: images[0],
@@ -211,15 +240,37 @@ class DroidServer:
                 "instruction": instruction,
                 "camera_type": {0:1, 1:1},
             }
-            action = self.wrapped_policy.forward(observation)
+            ############################################################################################################ It is for debug
+            # self.times += 1
+            # for i, entry in enumerate(self.read_data):
+            #     if entry['ActualGripper'] == 255:
+            #         self.close_gripper = True
+            #     if entry['ActualGripper'] == 0 and self.close_gripper:
+            #         entry['ActualGripper'] = -1 
+            #     action = np.array(entry['ActualTCPPose'] + [entry['ActualGripper']])
+            #     if i == self.times:
+            #         break
+            ############################################################################################################
             
+            ############################################################################################################ comment out for debug
+            action = self.wrapped_policy.forward(observation)
+            print(f"Action: {action}")
+            
+            cv2.imwrite("Combined_Image_debug.jpg", images[0])
+            end_time = time.time()
+            processing_time = end_time - start_time
+            print(f"Processing time: {processing_time}")
+            ############################################################################################################
+            
+            # cv2.waitKey(0)
             if double_encode:
                 return JSONResponse(json_numpy.dumps(action))
             else:
                 return JSONResponse(action)
+    
         except Exception as e:  # noqa: E722
             traceback_log = traceback.format_exc()
-            print(traceback_log)
+            # print(traceback_log)
             logging.error(traceback_log)
             logging.warning(
                 "Your request threw an error; make sure your request complies with the expected format:\n"
@@ -229,20 +280,21 @@ class DroidServer:
             )
             return json.dumps({"error": str(e), "traceback": traceback_log})
 
-    def run(self, host: str = "0.0.0.0", port: int = 8000) -> None:
+    def run(self, host: str = "0.0.0.0", port: int = 8001) -> None:
         self.app = FastAPI()
         self.app.post("/action")(self.predict_action)
         uvicorn.run(self.app, host=host, port=port)
+        time.sleep(0.2)
 
 
 @dataclass
 class DeployConfig:
     # fmt: off
-    droid_path: Union[str, Path] = "model_epoch_3000.pth"
+    droid_path: Union[str, Path] = "model_epoch_50.pth"
 
     # Server Configuration
     host: str = "0.0.0.0"                                               # Host IP Address
-    port: int = 8000                                                    # Host Port
+    port: int = 8000                                                 # Host Port
 
     # fmt: on
 

@@ -1,1 +1,6 @@
 *.DS_Store
+7/
+model_epoch_40.pth
+model_epoch_50.pth
+Combined_Image_debug.jpg
+.gitattributes

@@ -134,7 +134,9 @@ class PolicyWrapperRobomimic:
         
         self.fs_wrapper.add_obs(obs)
         obs_history = self.fs_wrapper.get_obs_history()
-        print(obs_history)
+        # print(obs_history)
+        print("[cartesian]", obs_history["robot_state/cartesian_position"])
+        # print(obs_history["robot_state/gripper_position"])
         action = self.policy(obs_history)
 
         return action

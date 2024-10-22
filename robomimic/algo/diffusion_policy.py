@@ -226,11 +226,13 @@ class DiffusionPolicyUNet(PolicyAlgo):
             inputs = {
                 'obs': batch["obs"],
             }
+            
             for k in self.obs_shapes:
                 ## Shape assertion does not apply to list of strings for raw language
                 if "raw" in k:
                     continue
                 # first two dimensions should be [B, T] for inputs
+                
                 assert inputs['obs'][k].ndim - 2 == len(self.obs_shapes[k])
             
             obs_features = TensorUtils.time_distributed({"obs":inputs["obs"]}, self.nets['policy']['obs_encoder'], inputs_as_kwargs=True)
@@ -481,6 +483,7 @@ class DiffusionPolicyUNet(PolicyAlgo):
                 the same keys as @self.network_classes
         """
         self.nets.load_state_dict(model_dict["nets"])
+        # print("Loading EMA model:",self.nets.load_state_dict(model_dict["nets"]))
         if model_dict.get("ema", None) is not None:
             self.ema.averaged_model.load_state_dict(model_dict["ema"])
 
